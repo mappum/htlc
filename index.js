@@ -1,31 +1,63 @@
 let { createHash } = require('crypto')
 let { addressHash } = require('coins')
 
+// TODO: put contracts in a queue ordered by timelock maturity time,
+//       automatically pay out to Alice address once timelock is passed
+//       ?
+
 module.exports = {
   // close an existing HTLC
-  onInput (input, tx, state, chain) {
-    let { contractAddress, secret, amount } = input
+  onInput (input, tx, state, ctx) {
+    // get fields from input
+    let {
+      contractAddress,
+      secret,
+      pubkey,
+      signature,
+      amount
+    } = input
 
     // find existing contract by address
     let contract = state[contractAddress]
     if (contract == null) {
       throw Error(`No HTLC with address "${contractAddress}"`)
     }
-    let { hash, locktime, aliceAddress, bobAddress } = contract
 
-    if (chain.height < locktime) {
+    // get fields from contract
+    let {
+      hash,
+      locktime,
+      aliceAddress,
+      bobAddress
+    } = contract
+
+    if (ctx.time < locktime) {
       // chain has not reached locktime, contract can be
       // redeemed by Bob if he has the secret value.
+
+      // must have correct secret
       if (!sha256(secret).equals(hash)) {
         throw Error('Invalid secret')
       }
 
-      // check for an output that pays to Bob
-      mustPayTo(tx, bobAddress, amount)
+      // must have Bob's pubkey
+      // TODO: address hashing and signature verification from coins
+      if (addressHash(pubkey) !== bobAddress) {
+        throw Error('Invalid public key')
+      }
     } else {
       // locktime has passed, contract pays back to Alice.
-      // check for an output that pays to Alice
-      mustPayTo(tx, aliceAddress, amount)
+
+      // must have Alice's pubkey
+      // TODO: address hashing and signature verification from coins
+      if (addressHash(pubkey) !== aliceAddress) {
+        throw Error('Invalid public key')
+      }=
+    }
+
+    // must be signed by the pubkey (Alice or Bob)
+    if (!verify(pubkey, signature, tx.sigHash)) {
+      throw Error('Invalid signature')
     }
 
     // we don't need this contract in the state anymore
@@ -33,8 +65,15 @@ module.exports = {
   },
 
   // create a new HTLC
-  onOutput (contract, tx, state, chain) {
-    let { amount, hash, locktime, aliceAddress, bobAddress } = contract
+  onOutput (output, tx, state, chain) {
+    // get fields from output
+    let {
+      hash,
+      locktime,
+      aliceAddress,
+      bobAddress,
+      amount
+    } = output
 
     if (!Buffer.isBuffer(hash) || hash.length !== 32) {
       throw Error('Hash must be a 32-byte Buffer')
@@ -43,14 +82,11 @@ module.exports = {
     if (!Number.isInteger(locktime)) {
       throw Error('Locktime must be an integer')
     }
-    if (locktime <= 0) {
-      throw Error('Locktime must be > 0')
-    }
     if (locktime > Number.MAX_SAFE_INT) {
       throw Error('Locktime must be < 2^53')
     }
-    if (locktime <= chain.height) {
-      throw Error('Locktime must be > current chain height')
+    if (locktime <= ctx.time) {
+      throw Error('Locktime must be > current time')
     }
 
     // add contract to state
@@ -58,30 +94,16 @@ module.exports = {
     if (state[address] != null) {
       throw Error('A contract with this address already exists')
     }
-    state[address] = contract
+    state[address] = {
+      hash,
+      locktime,
+      aliceAddress,
+      bobAddress,
+      amount
+    }
   }
 }
 
 function sha256 (data) {
   return createHash('sha256').update(data).digest()
-}
-
-function mustPayTo (tx, address, amount) {
-  // TODO: this should be in its own lib for smart contract conditions
-
-  // TODO: allow multiple inputs (will require keeping track of how much
-  //       output was already counted by other contract inputs, otherwise
-  //       an attacker can take some of the contracts' payments)
-  if (tx.inputs.length > 1) {
-    throw Error('Must have exactly 1 input')
-  }
-
-  // TODO: support arbitrary output types
-  for (let output of tx.outputs) {
-    if (output.type !== 'accounts') continue
-    if (output.address !== address) continue
-    if (output.amount !== amount) continue
-    return
-  }
-  throw Error(`Must have output which pays to address "${address}"`)
 }
