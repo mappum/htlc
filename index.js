@@ -1,5 +1,5 @@
 let { createHash } = require('crypto')
-let { addressHash } = require('coins')
+let { addressHash, verify } = require('coins')
 
 // TODO: put contracts in a queue ordered by timelock maturity time,
 //       automatically pay out to Alice address once timelock is passed
@@ -13,14 +13,18 @@ module.exports = {
       contractAddress,
       secret,
       pubkey,
-      signature,
-      amount
+      signature
     } = input
 
     // find existing contract by address
     let contract = state[contractAddress]
     if (contract == null) {
       throw Error(`No HTLC with address "${contractAddress}"`)
+    }
+
+    // must spend exact amount of tokens held in contract
+    if (input.amount !== contract.amount) {
+      throw Error('Amount does not match contract')
     }
 
     // get fields from contract
@@ -52,7 +56,7 @@ module.exports = {
       // TODO: address hashing and signature verification from coins
       if (addressHash(pubkey) !== aliceAddress) {
         throw Error('Invalid public key')
-      }=
+      }
     }
 
     // must be signed by the pubkey (Alice or Bob)
@@ -65,7 +69,7 @@ module.exports = {
   },
 
   // create a new HTLC
-  onOutput (output, tx, state, chain) {
+  onOutput (output, tx, state, ctx) {
     // get fields from output
     let {
       hash,

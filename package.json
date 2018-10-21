@@ -1,0 +1,25 @@
+{
+  "name": "htlc",
+  "version": "1.0.0",
+  "description": "Hashed TimeLock Contracts for Coins/Lotion",
+  "main": "index.js",
+  "dependencies": {
+    "coins": "^1.1.1"
+  },
+  "devDependencies": {
+    "standard": "^12.0.1"
+  },
+  "scripts": {
+    "test": "standard"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mappum/htlc.git"
+  },
+  "author": "Matt Bell <mappum@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/mappum/htlc/issues"
+  },
+  "homepage": "https://github.com/mappum/htlc#readme"
+}
